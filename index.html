@@ -34,13 +34,13 @@
         let ledCharacteristic = null;
         let colorPicker = null;
 
-        // Farbrad initialisieren (wird erst geladen, ist aber gesperrt bis Verbindung steht)
+        // Farbrad initialisieren
         colorPicker = new iro.ColorPicker("#wheelContainer", {
             width: 220,
             color: "#000000",
             layout: [
                 { component: iro.ui.Wheel },
-                { component: iro.ui.Slider, options: { sliderType: 'value' } } // Helligkeitsregler inklusive!
+                { component: iro.ui.Slider, options: { sliderType: 'value' } } // Helligkeitsregler
             ]
         });
 
@@ -68,7 +68,7 @@
                 statusDiv.style.color = "#28a745";
                 document.getElementById('connectBtn').disabled = true;
                 
-                // Event-Listener für das Farbrad aktivieren, wenn Verbindung steht
+                // FIX: Richtige Zuweisung des Event-Listeners für das Farbrad
                 colorPicker.on('color:change', sendColor);
             })
             .catch(error => {
@@ -77,8 +77,8 @@
             });
         });
 
-        // Funktion wird live beim Drehen des Rades aufgerufen
-        void function sendColor(color) {
+        // FIX: 'void' Schlüsselwort entfernt – jetzt saubere JavaScript Syntax!
+        function sendColor(color) {
             if (!ledCharacteristic) return;
             
             // iro.js liefert uns direkt die fertigen RGB Zahlen (0-255)
