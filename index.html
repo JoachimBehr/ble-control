@@ -9,7 +9,11 @@
         body { font-family: Arial, sans-serif; text-align: center; background: #222; color: #fff; padding: 20px; }
         button { background: #007bff; color: white; border: none; padding: 15px 30px; font-size: 16px; border-radius: 5px; cursor: pointer; margin-bottom: 25px; font-weight: bold; width: 100%; max-width: 300px; }
         button:disabled { background: #555; cursor: not-allowed; }
-        .btn-off { background: #dc3545; margin-top: 15px; display: none; }
+        .btn-off { 
+            background: #dc3545; 
+            margin: 20px auto 0 auto; /* Das 'auto' links und rechts schiebt den 300px breiten Button exakt in die Mitte! */
+            display: none; 
+        }
         .btn-off:hover { background: #bd2130; }
         .status { margin: 15px; font-weight: bold; font-size: 18px; color: #ffc107; }
         .container { max-width: 400px; margin: 0 auto; padding: 10px; }
