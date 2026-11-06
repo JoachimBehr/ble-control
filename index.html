@@ -3,24 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32 RGB Controller</title>
+    <title>ESP32 RGB Controller Diagnostic</title>
     <link rel="manifest" href="manifest.json">
     <style>
         body { font-family: Arial, sans-serif; text-align: center; background: #222; color: #fff; padding: 20px; }
         button { background: #007bff; color: white; border: none; padding: 15px 30px; font-size: 16px; border-radius: 5px; cursor: pointer; margin-bottom: 20px; font-weight: bold; width: 100%; max-width: 300px; }
-        #colorPicker { width: 80%; height: 180px; border: none; cursor: pointer; background: none; display: block; margin: 0 auto; }
+        #colorPicker { width: 80%; height: 150px; border: none; cursor: pointer; background: none; display: block; margin: 0 auto; }
         .status { margin: 15px; font-weight: bold; font-size: 18px; color: #ffc107; }
         .container { max-width: 400px; margin: 0 auto; padding: 10px; }
+        #logConsole { background: #000; color: #00ff00; font-family: monospace; text-align: left; padding: 10px; border-radius: 5px; height: 150px; overflow-y: auto; font-size: 12px; margin-top: 20px; border: 1px solid #444; }
     </style>
 </head>
 <body>
 
     <div class="container">
         <h1>RGB LED Controller</h1>
-        <!-- Der Button ruft jetzt direkt und ohne Umwege die Suche auf -->
+        
         <button id="connectBtn">Mit ESP32 verbinden</button>
+        
         <div class="status" id="status">Status: Bereit</div>
         <input type="color" id="colorPicker" value="#000000" disabled>
+
+        <h3>Diagnose-Log:</h3>
+        <div id="logConsole">System bereit. Warte auf Klick...<br></div>
     </div>
 
     <script>
@@ -28,34 +33,57 @@
         const CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
         let ledCharacteristic = null;
 
-        // Wir nutzen den modernsten, direkten Event-Listener, den Edge und Chrome fordern
-        document.getElementById('connectBtn').addEventListener('click', function() {
-            const statusDiv = document.getElementById('status');
-            statusDiv.textContent = "Suche läuft...";
+        function logToScreen(text) {
+            const consoleDiv = document.getElementById('logConsole');
+            consoleDiv.innerHTML += "> " + text + "<br>";
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
 
+        document.getElementById('connectBtn').addEventListener('click', function() {
+            // REAKTION 1: Sofortiges unblockierbares Info-Fenster!
+            alert("Klick registriert! Starte Bluetooth-Abfrage...");
+            
+            // REAKTION 2: Textänderungen auf der Seite
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = "Bluetooth wird gestartet...";
+            logToScreen("Button wurde geklickt.");
+
+            if (!navigator.bluetooth) {
+                logToScreen("FEHLER: Browser unterstützt kein Web-Bluetooth!");
+                statusDiv.textContent = "Fehler: Kein Bluetooth im Browser";
+                return;
+            }
+
+            logToScreen("Rufe navigator.bluetooth.requestDevice auf...");
+            
             navigator.bluetooth.requestDevice({
-                filters: [{ services: [SERVICE_UUID] }]
+                acceptAllDevices: true,
+                optionalServices: [SERVICE_UUID]
             })
             .then(device => {
+                logToScreen("Gerät ausgewählt: " + (device.name || "Unbenannt"));
                 statusDiv.textContent = "Verbinde...";
                 return device.gatt.connect();
             })
             .then(server => {
+                logToScreen("GATT-Server verbunden. Suche Service...");
                 return server.getPrimaryService(SERVICE_UUID);
             })
             .then(service => {
+                logToScreen("Service gefunden. Suche Charakteristik...");
                 return service.getCharacteristic(CHARACTERISTIC_UUID);
             })
             .then(characteristic => {
                 ledCharacteristic = characteristic;
+                logToScreen("Charakteristik erfolgreich verbunden!");
                 statusDiv.textContent = "Verbunden! 🟢";
                 statusDiv.style.color = "#28a745";
                 document.getElementById('colorPicker').disabled = false;
                 document.getElementById('connectBtn').disabled = true;
             })
             .catch(error => {
-                // Falls ein Fehler auftritt (z.B. Benutzer bricht ab), wird er im Status angezeigt
-                statusDiv.textContent = "Fehler: " + error.message;
+                logToScreen("Abbruch/Fehler: " + error.message);
+                statusDiv.textContent = "Fehler!";
                 statusDiv.style.color = "#dc3545";
             });
         });
@@ -68,7 +96,7 @@
             const b = parseInt(hex.substring(5, 7), 16);
             
             ledCharacteristic.writeValueWithoutResponse(new Uint8Array([r, g, b]))
-            .catch(e => console.log(e));
+            .catch(e => logToScreen("Sende-Fehler: " + e.message));
         });
     </script>
 </body>
