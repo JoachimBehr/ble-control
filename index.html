@@ -11,7 +11,6 @@
         body { font-family: Arial, sans-serif; text-align: center; background: #222; color: #fff; padding: 20px; }
         button { background: #007bff; color: white; border: none; padding: 15px 30px; font-size: 16px; border-radius: 5px; cursor: pointer; margin-bottom: 25px; font-weight: bold; width: 100%; max-width: 300px; }
         button:disabled { background: #555; }
-        /* Zentrierung für das neue Farbrad */
         #wheelContainer { display: flex; justify-content: center; margin: 20px auto; min-height: 220px; }
         .status { margin: 15px; font-weight: bold; font-size: 18px; color: #ffc107; }
         .container { max-width: 400px; margin: 0 auto; padding: 10px; }
@@ -24,7 +23,7 @@
         <button id="connectBtn">Mit ESP32 verbinden</button>
         <div class="status" id="status">Status: Bereit</div>
         
-        <!-- HIER SITZT JETZT DAS ANALOGE FARBRAD -->
+        <!-- HIER SITZT DAS ANALOGE FARBRAD -->
         <div id="wheelContainer"></div>
     </div>
 
@@ -33,15 +32,22 @@
         const CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
         let ledCharacteristic = null;
         let colorPicker = null;
+        let lastSendTime = 0; // Für die Zeitbremse (Throttling)
 
-        // Farbrad initialisieren
-        colorPicker = new iro.ColorPicker("#wheelContainer", {
-            width: 220,
-            color: "#000000",
-            layout: [
-                { component: iro.ui.Wheel },
-                { component: iro.ui.Slider, options: { sliderType: 'value' } } // Helligkeitsregler
-            ]
+        // Farbrad initialisieren sobald der DOM-Baum steht
+        window.addEventListener('DOMContentLoaded', function() {
+            if (typeof iro !== 'undefined') {
+                colorPicker = new iro.ColorPicker("#wheelContainer", {
+                    width: 220,
+                    color: "#000000",
+                    layout: [
+                        { component: iro.ui.Wheel },
+                        { component: iro.ui.Slider, options: { sliderType: 'value' } }
+                    ]
+                });
+            } else {
+                document.getElementById('status').textContent = "Fehler: iro.js konnte nicht geladen werden.";
+            }
         });
 
         document.getElementById('connectBtn').addEventListener('click', function() {
@@ -68,8 +74,10 @@
                 statusDiv.style.color = "#28a745";
                 document.getElementById('connectBtn').disabled = true;
                 
-                // FIX: Richtige Zuweisung des Event-Listeners für das Farbrad
-                colorPicker.on('color:change', sendColor);
+                // Event-Listener aktivieren
+                if (colorPicker) {
+                    colorPicker.on('color:change', sendColor);
+                }
             })
             .catch(error => {
                 statusDiv.textContent = "Fehler: " + error.message;
@@ -77,17 +85,20 @@
             });
         });
 
-        // FIX: 'void' Schlüsselwort entfernt – jetzt saubere JavaScript Syntax!
         function sendColor(color) {
             if (!ledCharacteristic) return;
             
-            // iro.js liefert uns direkt die fertigen RGB Zahlen (0-255)
+            const now = Date.now();
+            // Sendet maximal alle 40ms ein Paket (ca. 25 Bilder pro Sekunde), um den Datenstrom zu drosseln
+            if (now - lastSendTime < 40) return; 
+            lastSendTime = now;
+
             const r = color.rgb.r;
             const g = color.rgb.g;
             const b = color.rgb.b;
             
             ledCharacteristic.writeValueWithoutResponse(new Uint8Array([r, g, b]))
-            .catch(e => console.log(e));
+            .catch(e => console.log("Übertragungsfehler abgefangen: " + e.message));
         }
     </script>
 </body>
