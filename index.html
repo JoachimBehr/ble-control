@@ -5,15 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ESP32 RGB Controller</title>
     <link rel="manifest" href="manifest.json">
-    <!-- Einbinden des analogen Farbrad-Skripts -->
-    <script src="https://jsdelivr.net"></script>
     <style>
         body { font-family: Arial, sans-serif; text-align: center; background: #222; color: #fff; padding: 20px; }
         button { background: #007bff; color: white; border: none; padding: 15px 30px; font-size: 16px; border-radius: 5px; cursor: pointer; margin-bottom: 25px; font-weight: bold; width: 100%; max-width: 300px; }
-        button:disabled { background: #555; }
-        #wheelContainer { display: flex; justify-content: center; margin: 20px auto; min-height: 220px; }
+        button:disabled { background: #555; cursor: not-allowed; }
         .status { margin: 15px; font-weight: bold; font-size: 18px; color: #ffc107; }
         .container { max-width: 400px; margin: 0 auto; padding: 10px; }
+        
+        /* Das selbstgebaute, rein native Analog-Farbrad */
+        .wheel-box { position: relative; width: 240px; height: 240px; margin: 20px auto; }
+        #canvasWheel { border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.5); cursor: pointer; pointer-events: none; opacity: 0.4; }
+        #canvasWheel.active { pointer-events: auto; opacity: 1; }
+        
+        /* Visueller Zeiger/Cursor auf dem Rad */
+        #pointer { position: absolute; width: 16px; height: 16px; border: 2px solid #fff; border-radius: 50%; background: rgba(0,0,0,0.3); pointer-events: none; top: 112px; left: 112px; display: none; box-shadow: 0 0 4px #000; }
     </style>
 </head>
 <body>
@@ -23,32 +28,40 @@
         <button id="connectBtn">Mit ESP32 verbinden</button>
         <div class="status" id="status">Status: Bereit</div>
         
-        <!-- HIER SITZT DAS ANALOGE FARBRAD -->
-        <div id="wheelContainer"></div>
+        <!-- Das analoge Farbrad-Element -->
+        <div class="wheel-box">
+            <canvas id="canvasWheel" width="240" height="240"></canvas>
+            <div id="pointer"></div>
+        </div>
     </div>
 
     <script>
         const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
         const CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
         let ledCharacteristic = null;
-        let colorPicker = null;
-        let lastSendTime = 0; // Für die Zeitbremse (Throttling)
+        let lastSendTime = 0;
 
-        // Farbrad initialisieren sobald der DOM-Baum steht
-        window.addEventListener('DOMContentLoaded', function() {
-            if (typeof iro !== 'undefined') {
-                colorPicker = new iro.ColorPicker("#wheelContainer", {
-                    width: 220,
-                    color: "#000000",
-                    layout: [
-                        { component: iro.ui.Wheel },
-                        { component: iro.ui.Slider, options: { sliderType: 'value' } }
-                    ]
-                });
-            } else {
-                document.getElementById('status').textContent = "Fehler: iro.js konnte nicht geladen werden.";
+        const canvas = document.getElementById('canvasWheel');
+        const ctx = canvas.getContext('2d');
+        const pointer = document.getElementById('pointer');
+        const radius = canvas.width / 2;
+
+        // Zeichnet ein echtes, stufenloses mathematisches Farbrad auf das Canvas (Reiner CSS/HTML5 Standard)
+        for (let y = 0; y < canvas.height; y++) {
+            for (let x = 0; x < canvas.width; x++) {
+                let dx = x - radius;
+                let dy = y - radius;
+                let d = Math.sqrt(dx*dx + dy*dy);
+                
+                if (d <= radius) {
+                    let angle = Math.atan2(dy, dx) + Math.PI; 
+                    let hue = (angle / (2 * Math.PI)) * 360;
+                    let saturation = d / radius;
+                    ctx.fillStyle = "hsl(" + hue + ", " + (saturation * 100) + "%, 50%)";
+                    ctx.fillRect(x, y, 1, 1);
+                }
             }
-        });
+        }
 
         document.getElementById('connectBtn').addEventListener('click', function() {
             const statusDiv = document.getElementById('status');
@@ -62,22 +75,17 @@
                 statusDiv.textContent = "Verbinde...";
                 return device.gatt.connect();
             })
-            .then(server => {
-                return server.getPrimaryService(SERVICE_UUID);
-            })
-            .then(service => {
-                return service.getCharacteristic(CHARACTERISTIC_UUID);
-            })
+            .then(server => return server.getPrimaryService(SERVICE_UUID))
+            .then(service => return service.getCharacteristic(CHARACTERISTIC_UUID))
             .then(characteristic => {
                 ledCharacteristic = characteristic;
                 statusDiv.textContent = "Verbunden! 🟢";
                 statusDiv.style.color = "#28a745";
                 document.getElementById('connectBtn').disabled = true;
                 
-                // Event-Listener aktivieren
-                if (colorPicker) {
-                    colorPicker.on('color:change', sendColor);
-                }
+                // Schaltet das Farbrad visuell und funktional frei
+                canvas.classList.add('active');
+                pointer.style.display = "block";
             })
             .catch(error => {
                 statusDiv.textContent = "Fehler: " + error.message;
@@ -85,21 +93,45 @@
             });
         });
 
-        function sendColor(color) {
+        // Verarbeitet die Maus- oder Touch-Bewegungen auf dem Rad
+        function handleColorSelect(e) {
             if (!ledCharacteristic) return;
             
+            const rect = canvas.getBoundingClientRect();
+            // Unterstützt Desktop-Maus und Smartphone-Touch-Events gleichermaßen
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            const x = Math.min(Math.max(0, clientX - rect.left), canvas.width);
+            const y = Math.min(Math.max(0, clientY - rect.top), canvas.height);
+            
+            // Pixelfarbe aus dem Canvas auslesen
+            const imgData = ctx.getImageData(x, y, 1, 1).data;
+            if (imgData[3] === 0) return; // Klick außerhalb des Kreises ignorieren
+
+            // Zeiger verschieben
+            pointer.style.left = (x - 8) + "px";
+            pointer.style.top = (y - 8) + "px";
+
+            // Zeitbremse (Throttling max. alle 50ms ein Signal senden)
             const now = Date.now();
-            // Sendet maximal alle 40ms ein Paket (ca. 25 Bilder pro Sekunde), um den Datenstrom zu drosseln
-            if (now - lastSendTime < 40) return; 
+            if (now - lastSendTime < 50) return;
             lastSendTime = now;
 
-            const r = color.rgb.r;
-            const g = color.rgb.g;
-            const b = color.rgb.b;
-            
-            ledCharacteristic.writeValueWithoutResponse(new Uint8Array([r, g, b]))
-            .catch(e => console.log("Übertragungsfehler abgefangen: " + e.message));
+            // Senden ans Board
+            ledCharacteristic.writeValueWithoutResponse(new Uint8Array([imgData[0], imgData[1], imgData[2]]))
+            .catch(err => console.log(err));
         }
+
+        // Event-Bindungen für flüssiges Ziehen mit Maus oder Finger
+        canvas.addEventListener('mousedown', function(e) {
+            handleColorSelect(e);
+            canvas.onmousemove = handleColorSelect;
+        });
+        window.addEventListener('mouseup', function() { canvas.onmousemove = null; });
+        
+        canvas.addEventListener('touchstart', function(e) { handleColorSelect(e); });
+        canvas.addEventListener('touchmove', function(e) { e.preventDefault(); handleColorSelect(e); }, { passive: false });
     </script>
 </body>
 </html>
