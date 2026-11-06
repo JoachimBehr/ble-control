@@ -9,7 +9,7 @@
         body { font-family: Arial, sans-serif; text-align: center; background: #222; color: #fff; padding: 20px; }
         button { background: #007bff; color: white; border: none; padding: 15px 30px; font-size: 16px; border-radius: 5px; cursor: pointer; margin-bottom: 25px; font-weight: bold; width: 100%; max-width: 300px; }
         button:disabled { background: #555; cursor: not-allowed; }
-        .btn-off { background: #dc3545; margin-top: 15px; display: none; } /* Ausschalten Button zunächst versteckt */
+        .btn-off { background: #dc3545; margin-top: 15px; display: none; }
         .btn-off:hover { background: #bd2130; }
         .status { margin: 15px; font-weight: bold; font-size: 18px; color: #ffc107; }
         .container { max-width: 400px; margin: 0 auto; padding: 10px; }
@@ -33,7 +33,7 @@
             <div id="pointer"></div>
         </div>
 
-        <!-- 2. KORREKTUR: Der Ausschalten-Button -->
+        <!-- Der Ausschalten-Button -->
         <button id="offBtn" class="btn-off">LED Ausschalten</button>
     </div>
 
@@ -94,7 +94,7 @@
                 
                 canvas.classList.add('active');
                 pointer.style.display = "block";
-                offBtn.style.display = "block"; // Zeige Ausschalter
+                offBtn.style.display = "block";
             })
             .catch(function(error) {
                 statusDiv.textContent = "Fehler: " + error.message;
@@ -113,7 +113,7 @@
             const y = Math.min(Math.max(0, clientY - rect.top), canvas.height);
             
             const imgData = ctx.getImageData(x, y, 1, 1).data;
-            if (imgData[3] === 0) return; // Außerhalb des Kreises ignorieren
+            if (imgData[3] === 0) return; // Wenn außerhalb des Kreises geklickt wurde, abbrechen
 
             pointer.style.left = (x - 8) + "px";
             pointer.style.top = (y - 8) + "px";
@@ -122,17 +122,19 @@
             if (now - lastSendTime < 50) return;
             lastSendTime = now;
 
+            // Sendet die 3 echten Farbbytes (RGB) aus dem Canvas
             ledCharacteristic.writeValueWithoutResponse(new Uint8Array([imgData[0], imgData[1], imgData[2]]))
             .catch(function(err) { console.log(err); });
         }
 
-        // Event-Listener für das Ausschalten
+        // DEIN TRICK: Der Ausschalten-Button sendet einfach das bewährte 3-Byte-Schwarzpaket (0, 0, 0)
         offBtn.addEventListener('click', function() {
             if (!ledCharacteristic) return;
-            // Sende reines Schwarz (0, 0, 0)
+            
+            // Reines Schwarz senden über genau denselben Mechanismus wie das Farbrad
             ledCharacteristic.writeValueWithoutResponse(new Uint8Array([0, 0, 0]))
             .then(function() {
-                // Setze den Zeiger zurück in die Mitte
+                // Setze den Zeiger zurück in die Mitte auf den dunklen Bereich
                 pointer.style.left = (radius - 8) + "px";
                 pointer.style.top = (radius - 8) + "px";
             })
